@@ -125,8 +125,10 @@ def command(text):
             time.sleep(2)
     elif words[0] == 'metrics':
         emit('metrics', worker=metrics())
-    elif words[0] == 'runtime':
-        result = subprocess.run([sys.executable, '-u', 'aiven_runtime_probe.py'], timeout=300,
+    elif words[0] in ('runtime','diagnostics'):
+        args = [sys.executable, '-u', 'aiven_runtime_probe.py']
+        if words[0] == 'diagnostics': args.append('--diagnostics')
+        result = subprocess.run(args, timeout=300,
                                 env={k:v for k,v in os.environ.items() if not any(t in k.upper() for t in ('SECRET','PASSWORD','TOKEN','DATABASE_URL','API_KEY','PG_'))})
         emit('runtime_command_finished', returncode=result.returncode)
     elif words[0] == 'load_worker':
@@ -160,6 +162,7 @@ def reader():
 
 
 signal.signal(signal.SIGTERM, lambda *_: stop.set())
+signal.signal(signal.SIGINT, lambda *_: stop.set())
 threading.Thread(target=reader, daemon=True).start()
 emit('boot', python=platform.python_version(), marker_survived=SURVIVED,
      source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
