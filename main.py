@@ -18,7 +18,7 @@ import uuid
 from dotenv import load_dotenv
 import psycopg
 
-VERSION = 'qualification-v1'
+VERSION = 'qualification-v2'
 load_dotenv('.env')
 STATE = Path('qualification_state')
 STATE.mkdir(exist_ok=True)
@@ -66,7 +66,7 @@ def connect():
         host = os.environ['PROBE_PG_HOST']
         port = int(os.environ['PROBE_PG_PORT'])
         addresses = sorted({x[4][0] for x in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)})
-        emit('dns_resolved', addresses=addresses, network_path='public_assigned_endpoint')
+        emit('dns_resolved', addresses=addresses, port=port, network_path='public_assigned_endpoint')
         with socket.create_connection((host, port), timeout=10):
             emit('tcp_connected')
         ca = Path('qualification-pg-ca.pem')
@@ -145,7 +145,7 @@ def reader():
 
 signal.signal(signal.SIGTERM, lambda *_: stop.set())
 threading.Thread(target=reader, daemon=True).start()
-emit('boot', python=platform.python_version(), marker_survived=existing,
+emit('boot', source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), python=platform.python_version(), marker_survived=existing,
      environment=environments(), worker=metrics(),
      node_available=shutil.which('node') is not None,
      gmgn_available=shutil.which('gmgn-cli') is not None)
