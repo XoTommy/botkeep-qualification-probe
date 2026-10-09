@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -56,9 +57,18 @@ if '--diagnostics' in sys.argv:
             except Exception as e:
                 emit('public_provider_https_error',provider=provider,error_type=type(e).__name__)
         started=time.monotonic()
+        # Vendor explicitly publishes a demo credential for read-only testing.
+        # Retrieve it from official documentation; never hardcode or print it.
+        readme=urllib.request.urlopen('https://raw.githubusercontent.com/GMGNAI/gmgn-skills/main/Readme.md',timeout=20).read().decode()
+        demo=re.search(r'GMGN_API_KEY=([A-Za-z0-9_]+) gmgn-cli market trending',readme)
+        assert demo and 'public key supports all read-only commands' in readme
+        env['GMGN_API_KEY']=demo.group(1)
+        env.pop('GMGN_PRIVATE_KEY',None)
         p=subprocess.run([str((ROOT/'gmgn/node_modules/.bin/gmgn-cli').resolve()),'token','info','--chain','sol','--address','So11111111111111111111111111111111111111112','--raw'],env=env,input=b'',stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
         combined=(p.stdout+p.stderr).lower()
-        emit('gmgn_readonly_acquisition',returncode=p.returncode,latency_ms=(time.monotonic()-started)*1000,response_bytes=len(p.stdout),authentication_required=any(s in combined for s in (b'api key',b'api_key',b'private key',b'private_key',b'not configured',b'unauthorized',b'authentication')))
+        try: payload=json.loads(p.stdout); json_valid=True
+        except Exception: payload={}; json_valid=False
+        emit('gmgn_readonly_acquisition',returncode=p.returncode,latency_ms=(time.monotonic()-started)*1000,response_bytes=len(p.stdout),json_valid=json_valid,address_present=b'So11111111111111111111111111111111111111112' in p.stdout,api_code=payload.get('code') if isinstance(payload,dict) else None,authentication_source='vendor_public_demo_for_readonly_testing',authentication_required=any(s in combined for s in (b'api key',b'api_key',b'private key',b'private_key',b'not configured',b'unauthorized',b'authentication')))
     except Exception as e:
         emit('diagnostics_error',error_type=type(e).__name__)
     sys.exit(0)
