@@ -36,6 +36,14 @@ stop = threading.Event()
 commands = queue.Queue()
 conn = None
 
+def activate_runtime():
+    roots = sorted(Path('.qualification-runtime').glob('node-v22.*-linux-x64/bin'))
+    if roots:
+        os.environ['PATH'] = os.pathsep.join([str(roots[-1].resolve()),
+            str(Path('.qualification-runtime/gmgn/node_modules/.bin').resolve()), os.getenv('PATH','')])
+
+activate_runtime()
+
 def emit(event, **data):
     print(json.dumps(dict(event=event, utc=time.time(), version=VERSION,
                          marker=marker['uuid'], **data), default=str), flush=True)
@@ -167,6 +175,9 @@ def run_command(line):
         emit('worker_load_complete', before=before, active=metrics(),
              wall_s=time.monotonic()-start, cpu_s=time.process_time()-cpu)
         del buf
+    elif words[0] == 'runtime':
+        subprocess.run([sys.executable, '-u', 'runtime_probe.py'], check=True, timeout=180)
+        activate_runtime()
     elif words[0] == 'metrics':
         emit('metrics', environment=environments(), worker=metrics(), database=db_metrics())
     else:
