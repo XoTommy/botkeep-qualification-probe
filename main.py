@@ -66,12 +66,31 @@ def connect():
         host = os.environ['PROBE_PG_HOST']
         port = int(os.environ['PROBE_PG_PORT'])
         addresses = sorted({x[4][0] for x in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)})
-        emit('dns_resolved', addresses=addresses, port=port, network_path='public_assigned_endpoint')
-        with socket.create_connection((host, port), timeout=10):
-            emit('tcp_connected')
+        targets = [(host, 'public_assigned_endpoint')]
+        routes = Path('/proc/net/route')
+        if routes.exists():
+            for line in routes.read_text().splitlines()[1:]:
+                route = line.split()
+                if len(route) > 3 and route[1] == '00000000':
+                    gateway = socket.inet_ntoa(bytes.fromhex(route[2])[::-1])
+                    if gateway != '0.0.0.0':
+                        targets.append((gateway, 'container_default_gateway'))
+                    break
+        emit('dns_resolved', addresses=addresses, port=port)
+        for address, path in targets:
+            try:
+                with socket.create_connection((address, port), timeout=10):
+                    pass
+                emit('tcp_connected', address=address, port=port, network_path=path)
+                break
+            except OSError as exc:
+                emit('tcp_failed', address=address, port=port, network_path=path,
+                     error_type=type(exc).__name__)
+        else:
+            raise TimeoutError('No advertised endpoint route connected')
         ca = Path('qualification-pg-ca.pem')
         ca.write_text(os.environ['PROBE_PG_CA_PEM'])
-        conn = psycopg.connect(host=host, port=port, user=os.environ['PROBE_PG_USER'],
+        conn = psycopg.connect(os.getenv('PROBE_DATABASE_URL', ''), host=host, hostaddr=address, port=port, user=os.environ['PROBE_PG_USER'],
                               password=os.environ['PROBE_PG_PASSWORD'],
                               dbname=os.environ['PROBE_PG_DATABASE'], connect_timeout=10,
                               sslmode='verify-full', sslrootcert=str(ca),
@@ -134,6 +153,20 @@ def run_command(line):
             os.fsync(f.fileno())
         emit('intentional_crash', exit_code=17)
         os._exit(17)
+    elif words[0] == 'load_worker':
+        seconds = min(60, max(1, int(words[1])))
+        mb = min(512, max(1, int(words[2])))
+        before = metrics()
+        buf = bytearray(mb * 1048576)
+        for i in range(0, len(buf), 4096):
+            buf[i] = 1
+        start, cpu = time.monotonic(), time.process_time()
+        value = b'synthetic'
+        while time.monotonic() - start < seconds:
+            value = hashlib.sha256(value).digest()
+        emit('worker_load_complete', before=before, active=metrics(),
+             wall_s=time.monotonic()-start, cpu_s=time.process_time()-cpu)
+        del buf
     elif words[0] == 'metrics':
         emit('metrics', environment=environments(), worker=metrics(), database=db_metrics())
     else:
