@@ -66,6 +66,7 @@ def environments():
         expected = os.getenv(key + '_SHA256', '')
         result[key + '_exists'] = bool(value)
         result[key + '_matches'] = bool(expected) and hashlib.sha256(value.encode()).hexdigest() == expected
+    result['PROBE_DATABASE_URL_exists'] = bool(os.getenv('PROBE_DATABASE_URL'))
     return result
 
 def connect():
@@ -203,6 +204,7 @@ while not stop.is_set():
         conn = None
         emit('command_error', error_type=type(exc).__name__, sqlstate=getattr(exc, 'sqlstate', None))
     if time.monotonic() - last >= 15:
+        emit('worker_heartbeat', environment=environments(), worker=metrics())
         try:
             emit('heartbeat', environment=environments(), worker=metrics(), database=db_metrics())
         except Exception as exc:
