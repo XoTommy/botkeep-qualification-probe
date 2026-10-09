@@ -44,12 +44,13 @@ if '--diagnostics' in sys.argv:
         env['PATH'] = str((node_dir/'bin').resolve()) + os.pathsep + env.get('PATH','')
         env['GMGN_RATE_LIMIT_AUTO_RETRY_MAX_WAIT_MS'] = '0'
         emit('application_disk', disk=disk())
-        for provider, url in [('telegram','https://api.telegram.org/'),('gmgn','https://gmgn.ai/'),('dexscreener','https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112')]:
+        for provider, url in [('telegram','https://api.telegram.org/'),('gmgn','https://gmgn.ai/'),('dexscreener','https://api.dexscreener.com/tokens/v1/solana/So11111111111111111111111111111111111111112')]:
             started=time.monotonic()
             try:
-                with urllib.request.urlopen(url, timeout=20) as r:
+                request=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36'})
+                with urllib.request.urlopen(request, timeout=20) as r:
                     data=r.read(2_000_000)
-                    emit('public_provider_https',provider=provider,status=r.status,latency_ms=(time.monotonic()-started)*1000,response_bytes=len(data))
+                    emit('public_provider_https',provider=provider,status=r.status,latency_ms=(time.monotonic()-started)*1000,response_bytes=len(data),json_items=len(json.loads(data)) if provider=='dexscreener' else None)
             except urllib.error.HTTPError as e:
                 emit('public_provider_https',provider=provider,status=e.code,latency_ms=(time.monotonic()-started)*1000)
             except Exception as e:

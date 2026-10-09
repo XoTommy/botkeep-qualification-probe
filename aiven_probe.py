@@ -169,6 +169,14 @@ emit('boot', python=platform.python_version(), marker_survived=SURVIVED,
      secret_present=bool(os.getenv('AIVEN_DATABASE_URL')), ca_present=bool(os.getenv('AIVEN_CA_PEM')), worker=metrics())
 if os.getenv('AIVEN_DATABASE_URL') and os.getenv('AIVEN_CA_PEM'):
     safe_call(verify)
+    # One bounded repeat and one intentional crash; persistent marker prevents a loop.
+    repeat_flag=STATE/'phase7_repeat_done'
+    if not repeat_flag.exists():
+        safe_call(lambda: command('diagnostics'))
+        safe_call(load_worker)
+        with repeat_flag.open('w') as f:
+            f.write(str(time.time())); f.flush(); os.fsync(f.fileno())
+        safe_call(lambda: command('crash_once'))
 last_heartbeat, last_db = time.monotonic(), time.monotonic()
 while not stop.is_set():
     try:
