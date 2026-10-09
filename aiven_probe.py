@@ -63,7 +63,7 @@ def connect():
         pass
     emit('tcp_pass', latency_ms=(time.monotonic()-started)*1000)
     ca = STATE / 'aiven_ca.pem'
-    ca.write_text(os.environ['AIVEN_CA_PEM'])
+    ca.write_text(os.environ['AIVEN_CA_PEM'].replace('\\n', '\n'))
     os.chmod(ca, 0o600)
     started = time.monotonic()
     c = psycopg.connect(uri, sslmode='verify-full', sslrootcert=str(ca), connect_timeout=10,
